@@ -1,11 +1,13 @@
 # qgis-fieldplan
 QGIS script for creating field plans with given parameters, and then resolve their IDs after editing
 
-# Visualisation of parameters
+# Parameters
+Field parameters
 <p align="center">
-  <img src="https://github.com/kieranatkins/qgis-fieldplan/blob/main/site-info.png" />
+  <img src="https://github.com/kieranatkins/qgis-fieldplan/blob/main/site_info.png"/>
 </p>
 
+Block parameters
 <p align="center">
-  <img src="https://github.com/kieranatkins/qgis-fieldplan/blob/main/block-info.png" />
+  <img src="https://github.com/kieranatkins/qgis-fieldplan/blob/main/block_info.png"/>
 </p>
