@@ -22,30 +22,29 @@ from qgis.utils import iface
 
 MAX_BLOCKS = 32
 INFO = """
-Buids a field plan, based on given details about the plot, with functionality to have multiple different blocks (this can be done by giving multiple comma-seperated values in the block details).\n
+Builds a field plan, based on given parameters, with functionality to have multiple different blocks (this can be done by giving multiple comma-seperated values in the block details).\n
 Field plan parameters are split into two sections - site parameters and block parameters.\n
 
 NOTE: For a visualisation of these parameters, go to: <a href="https://github.com/kieranatkins/qgis-fieldplan/blob/main/site_info.png"> site parameters </a> and <a href="https://github.com/kieranatkins/qgis-fieldplan/blob/main/block_info.png"> block parameters </a>\n
 ----------\n
 Site info:\n
 ----------\n
-Origin - The initial coordinate, this will be the starting point from where the field plan will be built, this is where the 0-id field
-will be and should be along the field edge\n
-Destination - A coordinate along the field edge to create a bearing from which the field plan will be built.\n
+Origin - The initial coordinate, this will be the starting point from where the field plan will be built, this is where the plot with id=0 will be and should be along the field edge.\n
+Bearing point - A second point used to establish the bearing of the field edge, where the first row will be built.\n
 Direction - The direction along the bearing to build the field plan (left or right, from origin to destination).\n
 Margin - Empty space from the origin before building the field plan.\n
-Blockgap - Margin between blocks.\n
+Blockgap - Gap between blocks.\n
 ----------\n
 Block info:\n
 ----------\n
-Rows - The number of rows within the block (the number parallel to the bearing)\n
-Columns - The number of columns within the block (the number perpendicular to the bearing)\n
-Plots per board - The number of plots within a board (these will be built in rows parallel to the bearing)\n
-Dimension 1 (Board width) - The width of a plot within a board (or simply with of the board)\n
-Dimension 2 (Board height) - The height of a plot within a board \n
-Dimension 3 (Row gap)- The spacing/gap from one board to the next within a row\n
-Dimension 4 (Plot gap)- The spacing/gap between plots in a board\n
-Dimension 5 (Column gap)- The spacing/gap between one board to the next within a column\n
+Rows - The number of rows within the block (the number parallel to the bearing).\n
+Columns - The number of columns within the block (the number perpendicular to the bearing).\n
+Plots per board - The number of plots within a board (these will be built in rows parallel to the bearing).\n
+Dimension 1 (Board width) - The width of a plot within a board (or simply with of the board).\n
+Dimension 2 (Board height) - The height of a plot within a board. \n
+Dimension 3 (Row gap)- The spacing/gap from one board to the next within a row.\n
+Dimension 4 (Plot gap)- The spacing/gap between plots in a board.\n
+Dimension 5 (Column gap)- The spacing/gap between one board to the next within a column.\n
 
 """
 LAYER_NAME = "Field plan"
@@ -110,8 +109,8 @@ class CreateFieldPlan(QgsProcessingAlgorithm):
         )
         self.addParameter(
             QgsProcessingParameterPoint(
-                'DESTINATION',
-                self.tr('Destination'),
+                'BEARINGPOINT',
+                self.tr('Bearing point'),
             )
         )
         self.addParameter(
@@ -250,7 +249,7 @@ class CreateFieldPlan(QgsProcessingAlgorithm):
 
         # Setup parameters
         origin = self.parameterAsPoint(parameters, 'ORIGIN', context)
-        dest = self.parameterAsPoint(parameters, 'DESTINATION', context)
+        dest = self.parameterAsPoint(parameters, 'BEARINGPOINT', context)
         left = self.parameterAsInt(parameters, 'DIRECTION', context) == 0
         margin = self.parameterAsDouble(parameters, 'MARGIN', context)
         block_gap = self.parameterAsDouble(parameters, 'BLOCKGAP', context)
