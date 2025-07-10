@@ -45,7 +45,7 @@ Dimension 3 (Row gap)- The spacing/gap from one board to the next within a row\n
 Dimension 4 (Plot gap)- The spacing/gap between plots in a board\n
 Dimension 5 (Column gap)- The spacing/gap between one board to the next within a column\n
 
-NOTE: For a visualisation of these dimensions, go to: <LINK>
+NOTE: For a visualisation of these dimensions, go to: "https://github.com/kieranatkins/qgis-fieldplan/blob/main/site_info.png, "https://github.com/kieranatkins/qgis-fieldplan/blob/main/block_info.png
 
 """
 LAYER_NAME = "Field plan"
