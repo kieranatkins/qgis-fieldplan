@@ -23,9 +23,11 @@ from qgis.utils import iface
 MAX_BLOCKS = 32
 INFO = """
 Buids a field plan, based on given details about the plot, with functionality to have multiple different blocks (this can be done by giving multiple comma-seperated values in the block details).\n
-Field plan parameters are split into two sections - plot info and block info.\n 
+Field plan parameters are split into two sections - site parameters and block parameters.\n
+
+NOTE: For a visualisation of these parameters, go to: <a href="https://github.com/kieranatkins/qgis-fieldplan/blob/main/site_info.png"> site parameters </a> and <a href="https://github.com/kieranatkins/qgis-fieldplan/blob/main/block_info.png"> block parameters </a>\n
 ----------\n
-Plot info:\n
+Site info:\n
 ----------\n
 Origin - The initial coordinate, this will be the starting point from where the field plan will be built, this is where the 0-id field
 will be and should be along the field edge\n
@@ -44,8 +46,6 @@ Dimension 2 (Board height) - The height of a plot within a board \n
 Dimension 3 (Row gap)- The spacing/gap from one board to the next within a row\n
 Dimension 4 (Plot gap)- The spacing/gap between plots in a board\n
 Dimension 5 (Column gap)- The spacing/gap between one board to the next within a column\n
-
-NOTE: For a visualisation of these dimensions, go to: "https://github.com/kieranatkins/qgis-fieldplan/blob/main/site_info.png, "https://github.com/kieranatkins/qgis-fieldplan/blob/main/block_info.png
 
 """
 LAYER_NAME = "Field plan"

@@ -81,7 +81,7 @@ class ResolveIDs(QgsProcessingAlgorithm):
         """
         Returns a localised short help string for the algorithm.
         """
-        return self.tr('Example algorithm short description')
+        return self.tr(INFO)
 
     def initAlgorithm(self, config=None):
         """
