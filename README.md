@@ -1,5 +1,5 @@
 # qgis-fieldplan
-QGIS script for creating field plans with given parameters, and then resolve their IDs after editing
+QGIS script for creating field plans with given parameters, and then resolve their IDs after editing. Must be QGIS v3.40 or newer.
 
 # Installation
 Scripts must be placed in the `scripts` QGIS folder. To find the scripts folder location go to `Settings` -> `Options` -> `Scripts` -> `Script folder(s)`. Here you will see (and can add) the folder where QGIS will look for scripts. Place the two `.py` files in this folder, restart QGIS, and the scripts should be available in the processing toolbox in `Scripts` -> `Field plan`.
