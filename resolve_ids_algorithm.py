@@ -168,7 +168,7 @@ class ResolveIDs(QgsProcessingAlgorithm):
         except KeyError:
             col_name = 'column'
 
-        features = sorted(features, key=lambda f: f[id_name])
+        features = sorted(features, key=lambda f: int(f[id_name]))
         feedback.pushInfo(f'{len(features)} shapes to resolve')
         # maps original identifier to new resolved id
         id_map = {}
@@ -211,12 +211,10 @@ class ResolveIDs(QgsProcessingAlgorithm):
 
             row_serpentine_switch = not row_serpentine_switch if row_serpentine else row_serpentine
         
-        feedback.pushInfo(str(list(plot_map.keys())))
-
         for i, f in enumerate(features):
             f_new = QgsFeature()
             f_new.setGeometry(f.geometry())
-            attr = [int(f[id_name]), f['block'], f['row'], f[col_name], f['plot'], id_map[int(f[id_name])], plot_map[int(f[id_name])]]
+            attr = [f[id_name], f['block'], f['row'], f[col_name], f['plot'], id_map[int(f[id_name])], plot_map[int(f[id_name])]]
             f_new.setAttributes(attr)
             provider.addFeature(f_new)
 
