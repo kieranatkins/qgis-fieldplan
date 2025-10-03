@@ -34,7 +34,7 @@ Site info:\n
 Origin - The initial coordinate, this will be the starting point from where the field plan will be built, this is where the plot with id=0 will be and should be along the field edge.\n
 Bearing point - A second point used to establish the bearing of the field edge, where the first row will be built.\n
 Direction - The direction along the bearing to build the field plan (left or right, from origin to destination).\n
-Margin - Empty space from the origin before building the field plan.\n
+Margin - Empty space from the origin before building the field plan, this accepts either a single value for margin, or two comma-separated values for x (row dimension) and y (column dimension) independently .\n
 Blockgap - Gap between blocks.\n
 ----------\n
 Block info:\n
@@ -175,11 +175,9 @@ class CreateFieldPlan(QgsProcessingAlgorithm):
             )
         )
         self.addParameter(
-            QgsProcessingParameterNumber(
+            QgsProcessingParameterString(
                 'MARGIN',
                 self.tr('Margin'),
-                type=qgis.core.Qgis.ProcessingNumberParameterType.Double,
-                defaultValue=0.0
             )
         )
         self.addParameter(
