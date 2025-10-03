@@ -9,6 +9,8 @@ from qgis.core import (QgsProcessing,
                        QgsProcessingParameterPoint,
                        QgsProcessingParameterNumber,
                        QgsProcessingParameterEnum,
+                       QgsProcessingParameterVectorLayer,
+                       QgsProcessingParameterBoolean,
                        QgsProcessingOutputVectorLayer,
                        QgsProcessingParameterDefinition,
                        QgsProcessingParameterString,
@@ -40,15 +42,60 @@ Block info:\n
 Rows - The number of rows within the block (the number parallel to the bearing).\n
 Columns - The number of columns within the block (the number perpendicular to the bearing).\n
 Plots per board - The number of plots within a board (these will be built in rows parallel to the bearing).\n
-Dimension 1 (Board width) - The width of a plot within a board (or simply with of the board).\n
-Dimension 2 (Board height) - The height of a plot within a board. \n
+Dimension 1 (Board length) - The size of a board in the bearing's dimension (i.e. the row's dimension)\n
+Dimension 2 (Board width) - The size of the board in the dimension perpendicular to the bearing (i.e. the column's dimension) \n
 Dimension 3 (Row gap)- The spacing/gap from one board to the next within a row.\n
 Dimension 4 (Plot gap)- The spacing/gap between plots in a board.\n
 Dimension 5 (Column gap)- The spacing/gap between one board to the next within a column.\n
 
 """
 LAYER_NAME = "Field plan"
+BEARING_LAYER_NAME = "Field plan bearing"
 BLOCK_PARAMETERS = ['COLS', 'ROWS', 'PPB', 'DIM1', 'DIM2', 'DIM3', 'DIM4', 'DIM5']
+
+# LLM function
+def _find_line_point_distance(line_x1, line_y1, line_x2, line_y2, point_x, point_y):
+    """
+    Calculate the shortest distance between a point and a line segment, and find the closest point on the line.
+    
+    Args:
+        line_x1, line_y1: Coordinates of the first endpoint of the line
+        line_x2, line_y2: Coordinates of the second endpoint of the line  
+        point_x, point_y: Coordinates of the point
+    
+    Returns:
+        tuple: (distance, closest_x, closest_y) where:
+            - distance: shortest distance between point and line
+            - closest_x, closest_y: coordinates of the closest point on the line
+    """
+    # Calculate line vector components
+    line_dx = line_x2 - line_x1
+    line_dy = line_y2 - line_y1
+    
+    # Calculate line length squared
+    line_length_squared = line_dx ** 2 + line_dy ** 2
+    
+    # Handle case where line points are identical
+    if line_length_squared == 0:
+        closest_x, closest_y = line_x1, line_y1
+        distance = math.sqrt((line_x1 - point_x) ** 2 + (line_y1 - point_y) ** 2)
+        return distance, closest_x, closest_y
+    
+    # Calculate projection parameter t
+    # t represents how far along the line the closest point is (0 = at line_x1, 1 = at line_x2)
+    t = ((point_x - line_x1) * line_dx + (point_y - line_y1) * line_dy) / line_length_squared
+    
+    # Clamp t to [0, 1] to ensure the closest point is on the line segment
+    t = max(0, min(1, t))
+    
+    # Calculate the closest point on the line
+    closest_x = line_x1 + t * line_dx
+    closest_y = line_y1 + t * line_dy
+    
+    # Calculate the distance
+    distance = math.sqrt((closest_x - point_x) ** 2 + (closest_y - point_y) ** 2)
+    
+    return distance, closest_x, closest_y
 
 class CreateFieldPlan(QgsProcessingAlgorithm):
     """
@@ -114,6 +161,13 @@ class CreateFieldPlan(QgsProcessingAlgorithm):
             )
         )
         self.addParameter(
+            QgsProcessingParameterVectorLayer(
+                'SNAPTOSHAPE',
+                self.tr('Snap to shape'),
+                optional=True,
+            )
+        )
+        self.addParameter(
             QgsProcessingParameterEnum(
                 'DIRECTION',
                 self.tr('Direction'),
@@ -146,67 +200,72 @@ class CreateFieldPlan(QgsProcessingAlgorithm):
                 maxValue=MAX_BLOCKS
             )
         )
-
         self.addParameter(
             QgsProcessingParameterString(
                 'ROWS',
                 self.tr('Rows in a block'),
             )
         )
-
         self.addParameter(
             QgsProcessingParameterString(
                 'COLS',
                 self.tr('Columns in a block'),
             )
         )
-
         self.addParameter(
             QgsProcessingParameterString(
                 'PPB',
                 self.tr('Plots per board'),
             )
         )
-
         self.addParameter(
             QgsProcessingParameterString(
                 'DIM1',
-                self.tr('Dimension 1 (Board width)'),
+                self.tr('Dimension 1 (Board length)'),
             )
         )
-
         self.addParameter(
             QgsProcessingParameterString(
                 'DIM2',
-                self.tr('Dimension 2 (Board height)'),
+                self.tr('Dimension 2 (Board width)'),
             )
         )
-
         self.addParameter(
             QgsProcessingParameterString(
                 'DIM3',
                 self.tr('Dimension 3 (Row gap)'),
             )
         )
-
         self.addParameter(
             QgsProcessingParameterString(
                 'DIM4',
                 self.tr('Dimension 4 (Plot gap)'),
             )
         )
-
         self.addParameter(
             QgsProcessingParameterString(
                 'DIM5',
                 self.tr('Dimension 5 (Column gap)'),
             )
         )
-        
         self.addOutput(
             QgsProcessingOutputVectorLayer(
                 'FIELDPLAN',
                 self.tr('Output field plan')
+            )
+        )
+        self.addOutput(
+            QgsProcessingOutputVectorLayer(
+                'FIELDPLANBEARING',
+                self.tr('Output field plan bearing')
+            )
+        )
+        self.addParameter(
+            QgsProcessingParameterBoolean(
+                'RETURNBEARING',
+                self.tr('Return bearing?'),
+                optional=False,
+                defaultValue=True
             )
         )
 
@@ -224,6 +283,9 @@ class CreateFieldPlan(QgsProcessingAlgorithm):
             if len(block_params) != bn:
                 return False, "At least one of the block parameters (i.e. rows, columns, plots per board, dimensions) contains the wrong number of values for the number of blocks (values should be comma-seperated)"
         
+        margin = [float(x) for x in self.parameterAsString(parameters, 'MARGIN', context).split(',')]
+        if len(margin) > 2:
+            return False, "Margin parameter may contain either one value, to represent margin in both X and Y direction, or two comma-seperated values representing margin in X, Y directions"
         return True, ''
 
 
@@ -235,7 +297,8 @@ class CreateFieldPlan(QgsProcessingAlgorithm):
         crs = context.project().crs().authid()
         layer = QgsVectorLayer(f"Polygon?crs={crs}", LAYER_NAME, "memory")
         layer.startEditing()
-    
+
+
         # Setup fields
         provider = layer.dataProvider()
         fields = QgsFields()
@@ -250,8 +313,10 @@ class CreateFieldPlan(QgsProcessingAlgorithm):
         # Setup parameters
         origin = self.parameterAsPoint(parameters, 'ORIGIN', context)
         dest = self.parameterAsPoint(parameters, 'BEARINGPOINT', context)
+        snap_to_shape = self.parameterAsVectorLayer(parameters, 'SNAPTOSHAPE', context)
+        return_bearing = self.parameterAsBoolean(parameters, 'RETURNBEARING', context)
         left = self.parameterAsInt(parameters, 'DIRECTION', context) == 0
-        margin = self.parameterAsDouble(parameters, 'MARGIN', context)
+        margin = [float(x) for x in self.parameterAsString(parameters, 'MARGIN', context).split(',')]
         block_gap = self.parameterAsDouble(parameters, 'BLOCKGAP', context)
         block_number = self.parameterAsInt(parameters, 'BLOCKNUMBER', context)
         col_info = [int(x) for x in self.parameterAsString(parameters, 'COLS', context).split(',')]
@@ -263,15 +328,53 @@ class CreateFieldPlan(QgsProcessingAlgorithm):
         dim4 = [float(x) for x in self.parameterAsString(parameters, 'DIM4', context).split(',')]
         dim5 = [float(x) for x in self.parameterAsString(parameters, 'DIM5', context).split(',')]
 
+        if snap_to_shape is None:
+            origin_x = origin.x()
+            origin_y = origin.y()
+            dest_x = dest.x()
+            dest_y = dest.y()
+        else:
+            snapped_points = []
+            for x, y in [(origin.x(), origin.y()), (dest.x(), dest.y())]:
+                # find closest line
+                closest_x = None
+                closest_y = None
+                closest_line_distance = math.inf
+
+                # not sure why shapes are nested like this, but this is probably the safest way to deal with it?
+                for feat in snap_to_shape.getFeatures():
+                    geom = feat.geometry().as_numpy()
+                    for shape1 in geom:
+                        for shape2 in shape1:
+                            for p1, p2 in zip(shape2, shape2[1:]):
+                                dist, _x, _y = _find_line_point_distance(p1[0], p1[1], p2[0], p2[1], x, y)
+                                if dist < closest_line_distance:
+                                    closest_x, closest_y = _x, _y
+                                    closest_line_distance = dist
+                
+                snapped_points.append([closest_x, closest_y])
+
+            (origin_x, origin_y), (dest_x, dest_y) = snapped_points
+
+            feedback.pushInfo(f'Updated origin from {origin.x():.2f}, {origin.y():.2f} to {origin_x:.2f}, {origin_y:.2f}')
+            feedback.pushInfo(f'Updated dest from {dest.x():.2f}, {dest.y():.2f} to {dest_x:.2f}, {dest_y:.2f}')
+
+        if len(margin) == 2:
+            margin_x = margin[0]
+            margin_y = margin[1]
+        else:
+            margin_x = margin[0]
+            margin_y = margin[0]
+
         # calculate bearing
-        dx = dest.x() - origin.x()
-        dy = dest.y() - origin.y()
+        dx = dest_x - origin_x
+        dy = dest_y - origin_y
         bearing = math.degrees(math.atan2(dx, dy)) % 360
 
         feedback.pushInfo(f'Calculated bearing to be: {bearing}')
 
-        block_origin_x = margin
-        block_origin_y = margin
+        block_origin_x = margin_x
+        block_origin_y = margin_y
 
         polygons = []
         block_ids = []
@@ -287,11 +390,11 @@ class CreateFieldPlan(QgsProcessingAlgorithm):
                     for p in range(ppb):
                         # Bottom left                                                       
                         bl_x = block_origin_x     
-                        bl_x += row * ((ppb * two) + ((ppb-1) * four) + five)
+                        bl_x += col * ((ppb * two) + ((ppb-1) * four) + five)
                         bl_x += p * (two + four)
 
                         bl_y = block_origin_y
-                        bl_y += col * (one + three)    
+                        bl_y += row * (one + three)    
 
                         # Bottom right                                                  
                         br_x = bl_x + two
@@ -313,25 +416,24 @@ class CreateFieldPlan(QgsProcessingAlgorithm):
                             rotated_x = x * math.cos(bearing_radians) - y * math.sin(bearing_radians)
                             rotated_y = x * math.sin(bearing_radians) + y * math.cos(bearing_radians)
 
-                            x = origin.x() + rotated_x
-                            y = origin.y() - rotated_y
+                            x = origin_x + rotated_x
+                            y = origin_y - rotated_y
 
                             polygon.append((x, y))
                         
                         polygons.append(polygon)
-                        row_ids.append(int(row))
-                        column_ids.append(int(col))
-                        plot_ids.append(int(p))
-                        block_ids.append(int(b))
+                        row_ids.append(int(row+1))
+                        column_ids.append(int(col+1))
+                        plot_ids.append(int(p+1))
+                        block_ids.append(int(b+1))
 
             block_origin_y += ((cols * one) + ((cols - 1) * three) + block_gap)     
 
-        # error is here
         for i, (polygon, block, row, column, plot) in enumerate(zip(polygons, block_ids, row_ids, column_ids, plot_ids)):
             polygon = [QgsPointXY(x,y) for x,y in polygon]
             feat = QgsFeature()
             feat.setGeometry(QgsGeometry.fromPolygonXY([polygon]))  #xmin, ymin, xmax, ymax
-            feat.setAttributes([i, block, row, column, plot])
+            feat.setAttributes([i+1, block, row, column, plot])
             provider.addFeature(feat)
         
         feedback.pushInfo(f'Created {i+1} polygons.')
@@ -348,5 +450,34 @@ class CreateFieldPlan(QgsProcessingAlgorithm):
             )
         )
 
+        ret = {'FIELDPLAN':layer}
+
+        if return_bearing:
+            crs = context.project().crs().authid()
+            bearing_layer = QgsVectorLayer(f"Linestring?crs={crs}", BEARING_LAYER_NAME, "memory")
+            bearing_layer.startEditing()
+
+            bearing_provider = bearing_layer.dataProvider()
+            bearing_fields = QgsFields()
+            bearing_fields.append(QgsField("bearing", QMetaType.Double))
+            bearing_provider.addAttributes(bearing_fields)
+            bearing_layer.updateFields()
+            feat = QgsFeature()
+            feat.setGeometry(QgsGeometry.fromPolylineXY([QgsPointXY(origin_x, origin_y), QgsPointXY(dest_x, dest_y)]))
+            feat.setAttributes([bearing])
+            bearing_provider.addFeature(feat)
+            bearing_layer.commitChanges()
+            bearing_layer.updateExtents()
+            context.temporaryLayerStore().addMapLayer(bearing_layer)
+            context.addLayerToLoadOnCompletion(
+                bearing_layer.id(),
+                QgsProcessingContext.LayerDetails(
+                    BEARING_LAYER_NAME,
+                    context.project(),
+                    'FIELDPLANBEARING'
+                )
+            )
+            ret['FIELDPLANBEARING'] = bearing_layer
+
         feedback.setProgress(100)        
-        return {'FIELDPLAN':layer}
+        return ret

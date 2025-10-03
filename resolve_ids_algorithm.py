@@ -154,28 +154,14 @@ class ResolveIDs(QgsProcessingAlgorithm):
 
         # Get features from input, check they're sorted
         features = list(input_layer.getFeatures())
-
-        # For backwards compatibility
-        id_name = 'id'
-        try: 
-            features[0]['id']
-        except KeyError:
-            id_name = 'identifier'
-
-        col_name = 'col'
-        try: 
-            features[0]['col']
-        except KeyError:
-            col_name = 'column'
-
-        features = sorted(features, key=lambda f: int(f[id_name]))
+        features = sorted(features, key=lambda f: f['id'])
         feedback.pushInfo(f'{len(features)} shapes to resolve')
         # maps original identifier to new resolved id
         id_map = {}
         # maps original plot number to a reversed format in the serpentine case
         plot_map = {}
 
-        resolved_id = 0
+        resolved_id = 1
         board_serpentine_switch = False if reverse_first_board else True
         row_serpentine_switch = True 
 
@@ -197,24 +183,24 @@ class ResolveIDs(QgsProcessingAlgorithm):
 
                 # group records by row, block and board then iterate
                 for f in block:
-                    boards[f[col_name]].append(f)
+                    boards[f['col']].append(f)
                 
                 for board in boards.values():
                     board = board if board_serpentine_switch else reversed(board)
 
                     for i, plot in enumerate(board):
-                        id_map.update({int(plot[id_name]):int(resolved_id)})
-                        plot_map.update({int(plot[id_name]):int(i)})
+                        id_map.update({int(plot['id']):int(resolved_id)})
+                        plot_map.update({int(plot['id']):int(i+1)})
                         resolved_id += 1
                     
                     board_serpentine_switch = not board_serpentine_switch if board_serpentine else board_serpentine
 
             row_serpentine_switch = not row_serpentine_switch if row_serpentine else row_serpentine
-        
+
         for i, f in enumerate(features):
             f_new = QgsFeature()
             f_new.setGeometry(f.geometry())
-            attr = [f[id_name], f['block'], f['row'], f[col_name], f['plot'], id_map[int(f[id_name])], plot_map[int(f[id_name])]]
+            attr = [f['id'], f['block'], f['row'], f['col'], f['plot'], id_map[f['id']], plot_map[f['id']]]
             f_new.setAttributes(attr)
             provider.addFeature(f_new)
 
