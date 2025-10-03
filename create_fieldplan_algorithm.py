@@ -178,6 +178,7 @@ class CreateFieldPlan(QgsProcessingAlgorithm):
             QgsProcessingParameterString(
                 'MARGIN',
                 self.tr('Margin'),
+                defaultValue="0"
             )
         )
         self.addParameter(
@@ -281,7 +282,7 @@ class CreateFieldPlan(QgsProcessingAlgorithm):
             if len(block_params) != bn:
                 return False, "At least one of the block parameters (i.e. rows, columns, plots per board, dimensions) contains the wrong number of values for the number of blocks (values should be comma-seperated)"
         
-        margin = [float(x) for x in self.parameterAsString(parameters, 'MARGIN', context).split(',')]
+        margin = self.parameterAsString(parameters, 'MARGIN', context).split(',')
         if len(margin) > 2:
             return False, "Margin parameter may contain either one value, to represent margin in both X and Y direction, or two comma-seperated values representing margin in X, Y directions"
         return True, ''
