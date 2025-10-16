@@ -6,6 +6,7 @@ Scripts must be placed in the `scripts` QGIS folder. To find the scripts folder 
 
 # Parameters
 The following images are visualisations of the parameters available to build field plans.
+
 Field parameters:
 <p align="center">
   <img src="https://github.com/kieranatkins/qgis-fieldplan/blob/main/site_info.png"/>
