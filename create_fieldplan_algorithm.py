@@ -24,34 +24,49 @@ from qgis.utils import iface
 
 MAX_BLOCKS = 32
 INFO = """
-Builds a field plan, based on given parameters, with functionality to have multiple different blocks (this can be done by giving multiple comma-seperated values in the block details).\n
-Field plan parameters are split into two sections - site parameters and block parameters.\n
+Builds a field plan, based on given parameters, with functionality to have multiple blocks.\n
+Field plan parameters are split into three sections - site parameters and block parameters.\n
+Note: Asterisks (*) denotes places where comma-separated values can be used.
+
+The algorithm denotes two dimensions: The X-axis, perpendicular the bearing line and the Y-axis, parallel to the bearing line
 
 NOTE: For a visualisation of these parameters, go to: <a href="https://github.com/kieranatkins/qgis-fieldplan/blob/main/site_info.png"> site parameters </a> and <a href="https://github.com/kieranatkins/qgis-fieldplan/blob/main/block_info.png"> block parameters </a>\n
-----------\n
-Site info:\n
-----------\n
+--------------------------\n
+Site parameters:\n
+--------------------------\n
 Origin - The initial coordinate, this will be the starting point from where the field plan will be built, this is where the plot with id=0 will be and should be along the field edge.\n
-Bearing point - A second point used to establish the bearing of the field edge, where the first row will be built.\n
+Bearing point - A second point used to establish the bearing of the field edge, where the first column will be built.\n
+Snap to shape - An optional parameter that snaps the origin and bearing points to the closest edge of a given layer
 Direction - The direction along the bearing to build the field plan (left or right, from origin to destination).\n
-Margin - Empty space from the origin before building the field plan, this accepts either a single value for margin, or two comma-separated values for x (row dimension) and y (column dimension) independently .\n
-Blockgap - Gap between blocks.\n
-----------\n
-Block info:\n
-----------\n
+Margin - Empty space from the origin before building the field plan, this accepts either a single value for margin, or two comma-separated values for X&Y independently .\n
+Block number - Number of blocks
+Block gap - The spacing/gap from one block to a next.\n
+
+--------------------------\n
+Variable block parameters:\n
+--------------------------\n
+Note: Either a single value or multiple comma-seperated values can be placed in these input fields representing each block
 Rows - The number of rows within the block (the number parallel to the bearing).\n
 Columns - The number of columns within the block (the number perpendicular to the bearing).\n
-Plots per board - The number of plots within a board (these will be built in rows parallel to the bearing).\n
-Dimension 1 (Board length) - The size of a board in the bearing's dimension (i.e. the row's dimension)\n
-Dimension 2 (Board width) - The size of the board in the dimension perpendicular to the bearing (i.e. the column's dimension) \n
-Dimension 3 (Row gap)- The spacing/gap from one board to the next within a row.\n
-Dimension 4 (Plot gap)- The spacing/gap between plots in a board.\n
-Dimension 5 (Column gap)- The spacing/gap between one board to the next within a column.\n
+Plot length - The length of a plot in the y dimension
+Alley - The spacing/gap from one row to a next within a column.\n
+
+--------------------------\n
+Fixed block parameters:\n
+--------------------------\n
+Plots per column - The number of plots within a single column
+Dimension 1 - The plot width
+Dimension 2 - The plot gap
+Dimension 3 - The column gap
+Dimension 4 - The column margin - An optional spacing parameter to allow for dead space between plot and vehicle wheel width
 
 """
 LAYER_NAME = "Field plan"
 BEARING_LAYER_NAME = "Field plan bearing"
-BLOCK_PARAMETERS = ['COLS', 'ROWS', 'PPB', 'DIM1', 'DIM2', 'DIM3', 'DIM4', 'DIM5']
+GUIDANCE_LINE_LAYER_NAME = "Guidance lines"
+BOUNDARY_LAYER_NAME = "Field plan block boundaries"
+VARIABLE_PARAMETERS = ['COLS', 'ROWS', 'PLOTLENGTH', 'ALLEY']
+FIELD_GUIDANCE_LINES_PARAMETERS = ['DIM1' ,'DIM2', 'DIM3', 'DIM4']
 
 # LLM function
 def _find_line_point_distance(line_x1, line_y1, line_x2, line_y2, point_x, point_y):
@@ -177,16 +192,8 @@ class CreateFieldPlan(QgsProcessingAlgorithm):
         self.addParameter(
             QgsProcessingParameterString(
                 'MARGIN',
-                self.tr('Margin'),
+                self.tr('Margin*'),
                 defaultValue="0"
-            )
-        )
-        self.addParameter(
-            QgsProcessingParameterNumber(
-                'BLOCKGAP',
-                self.tr('Block gap'),
-                type=qgis.core.Qgis.ProcessingNumberParameterType.Double,
-                defaultValue=0
             )
         )
         self.addParameter(
@@ -200,51 +207,76 @@ class CreateFieldPlan(QgsProcessingAlgorithm):
             )
         )
         self.addParameter(
+            QgsProcessingParameterNumber(
+                'BLOCKGAP',
+                self.tr('Block gap'),
+                type=qgis.core.Qgis.ProcessingNumberParameterType.Double,
+                defaultValue=0
+            )
+        )
+        self.addParameter(
             QgsProcessingParameterString(
                 'ROWS',
-                self.tr('Rows in a block'),
+                self.tr('Rows in a block*'),
             )
         )
         self.addParameter(
             QgsProcessingParameterString(
                 'COLS',
-                self.tr('Columns in a block'),
+                self.tr('Columns in a block*'),
             )
         )
         self.addParameter(
             QgsProcessingParameterString(
-                'PPB',
-                self.tr('Plots per board'),
+                'PLOTLENGTH',
+                self.tr('Plot length*'),
             )
         )
         self.addParameter(
             QgsProcessingParameterString(
+                'ALLEY',
+                self.tr('Alley*'),
+            )
+        )
+        self.addParameter(
+            QgsProcessingParameterNumber(
+                'PPC',
+                self.tr('Plots per column'),
+                type=qgis.core.Qgis.ProcessingNumberParameterType.Integer,
+            )
+        )
+
+        self.addParameter(
+            QgsProcessingParameterNumber(
                 'DIM1',
-                self.tr('Dimension 1 (Board length)'),
+                self.tr('Dimension 1 (Plot width)'),
+                type=qgis.core.Qgis.ProcessingNumberParameterType.Double,
+                defaultValue=0
             )
         )
+
         self.addParameter(
-            QgsProcessingParameterString(
+            QgsProcessingParameterNumber(
                 'DIM2',
-                self.tr('Dimension 2 (Board width)'),
+                self.tr('Dimension 2 (Plot gap)'),
+                type=qgis.core.Qgis.ProcessingNumberParameterType.Double,
+                defaultValue=0
             )
         )
         self.addParameter(
-            QgsProcessingParameterString(
+            QgsProcessingParameterNumber(
                 'DIM3',
-                self.tr('Dimension 3 (Row gap)'),
+                self.tr('Dimension 3 (Column gap)'),
+                type=qgis.core.Qgis.ProcessingNumberParameterType.Double,
+                defaultValue=0
             )
         )
         self.addParameter(
-            QgsProcessingParameterString(
+            QgsProcessingParameterNumber(
                 'DIM4',
-                self.tr('Dimension 4 (Plot gap)'),
-            )
-        )
-        self.addParameter(
-            QgsProcessingParameterString(
-                'DIM5',
-                self.tr('Dimension 5 (Column gap)'),
+                self.tr('Dimension 4 (Column margin)'),
+                type=qgis.core.Qgis.ProcessingNumberParameterType.Double,
+                defaultValue=0
             )
         )
         self.addOutput(
@@ -259,29 +291,49 @@ class CreateFieldPlan(QgsProcessingAlgorithm):
                 self.tr('Output field plan bearing')
             )
         )
+        self.addOutput(
+            QgsProcessingOutputVectorLayer(
+                'FIELDPLAGUIDANCELINES',
+                self.tr('Output block guidance lines')
+            )
+        )
+        self.addOutput(
+            QgsProcessingOutputVectorLayer(
+                'FIELDPLANBOUNDARY',
+                self.tr('Output block edge boundary lines')
+            )
+        )
         self.addParameter(
             QgsProcessingParameterBoolean(
                 'RETURNBEARING',
                 self.tr('Return bearing?'),
                 optional=False,
-                defaultValue=True
+                defaultValue=False
             )
         )
-
+        self.addParameter(
+            QgsProcessingParameterBoolean(
+                'RETURNGUIDANCELINES',
+                self.tr('Calculate guidance lines?'),
+                optional=False,
+                defaultValue=False
+            )
+        )
 
     def checkParameterValues(self, parameters, context):
         # Check CRS
         crs = context.project().crs()
         if crs.isGeographic():
-            return False, "The system requires the CRS be geographic (e.g. UTM projection), as the script calculates shapes in metres"
+            return False, "The system requires the CRS to be geographic (e.g. UTM projection), as the script calculates shapes in metres"
         # Check parameters
         bn = self.parameterAsInt(parameters, 'BLOCKNUMBER', context)
-        for p in BLOCK_PARAMETERS:
+
+        for p in VARIABLE_PARAMETERS:
             s = self.parameterAsString(parameters, p, context)
             block_params = s.split(',')
-            if len(block_params) != bn:
-                return False, "At least one of the block parameters (i.e. rows, columns, plots per board, dimensions) contains the wrong number of values for the number of blocks (values should be comma-seperated)"
-        
+            if not (len(block_params) == bn or len(block_params) == 1):
+                return False, f"The parameter {p} contains the wrong number of values for the number of blocks ({bn}). Values can be single, or comma-seperated for each block"            
+
         margin = self.parameterAsString(parameters, 'MARGIN', context).split(',')
         if len(margin) > 2:
             return False, "Margin parameter may contain either one value, to represent margin in both X and Y direction, or two comma-seperated values representing margin in X, Y directions"
@@ -314,18 +366,30 @@ class CreateFieldPlan(QgsProcessingAlgorithm):
         dest = self.parameterAsPoint(parameters, 'BEARINGPOINT', context)
         snap_to_shape = self.parameterAsVectorLayer(parameters, 'SNAPTOSHAPE', context)
         return_bearing = self.parameterAsBoolean(parameters, 'RETURNBEARING', context)
+        return_guidance_lines = self.parameterAsBoolean(parameters, 'RETURNGUIDANCELINES', context)
         left = self.parameterAsInt(parameters, 'DIRECTION', context) == 0
         margin = [float(x) for x in self.parameterAsString(parameters, 'MARGIN', context).split(',')]
         block_gap = self.parameterAsDouble(parameters, 'BLOCKGAP', context)
         block_number = self.parameterAsInt(parameters, 'BLOCKNUMBER', context)
-        col_info = [int(x) for x in self.parameterAsString(parameters, 'COLS', context).split(',')]
+
         row_info = [int(x) for x in self.parameterAsString(parameters, 'ROWS', context).split(',')]
-        plots_per_board = [int(x) for x in self.parameterAsString(parameters, 'PPB', context).split(',')]
-        dim1 = [float(x) for x in self.parameterAsString(parameters, 'DIM1', context).split(',')]
-        dim2 = [float(x) for x in self.parameterAsString(parameters, 'DIM2', context).split(',')]
-        dim3 = [float(x) for x in self.parameterAsString(parameters, 'DIM3', context).split(',')]
-        dim4 = [float(x) for x in self.parameterAsString(parameters, 'DIM4', context).split(',')]
-        dim5 = [float(x) for x in self.parameterAsString(parameters, 'DIM5', context).split(',')]
+        col_info = [int(x) for x in self.parameterAsString(parameters, 'COLS', context).split(',')]
+        plot_length = [float(x) for x in self.parameterAsString(parameters, 'PLOTLENGTH', context).split(',')]
+        alley = [float(x) for x in self.parameterAsString(parameters, 'ALLEY', context).split(',')]
+
+        ppc = self.parameterAsInt(parameters, 'PPC', context)
+        one = self.parameterAsDouble(parameters, 'DIM1', context)
+        two = self.parameterAsDouble(parameters, 'DIM2', context)
+        three = self.parameterAsDouble(parameters, 'DIM3', context)
+        four = self.parameterAsDouble(parameters, 'DIM4', context)
+
+        # check for single values in CSV entries
+        col_info = col_info if len(col_info) > 1 else col_info * block_number
+        row_info = row_info if len(row_info) > 1 else row_info * block_number
+        plot_length = plot_length if len(plot_length) > 1 else plot_length * block_number
+        alley = alley if len(alley) > 1 else alley * block_number
+
+        feedback.pushInfo(f'{len(col_info)=}, {len(row_info)=}, {len(plot_length)=}, {len(alley)=}')
 
         if snap_to_shape is None:
             origin_x = origin.x()
@@ -369,6 +433,7 @@ class CreateFieldPlan(QgsProcessingAlgorithm):
         dx = dest_x - origin_x
         dy = dest_y - origin_y
         bearing = math.degrees(math.atan2(dx, dy)) % 360
+        bearing_radians = math.radians(bearing-180)
 
         feedback.pushInfo(f'Calculated bearing to be: {bearing}')
 
@@ -381,34 +446,38 @@ class CreateFieldPlan(QgsProcessingAlgorithm):
         row_ids = []
         plot_ids = []
 
+        guidance_lines_coords = []
+        guidance_lines_col = []
+
+        block_boundaries = []
+
         # Iterate over each block
-        block_params = zip(col_info, row_info, plots_per_board, dim1, dim2, dim3, dim4, dim5)
-        for b, (cols, rows, ppb, one, two, three, four, five) in enumerate(block_params):
+        for b, (cols, rows, pl, a) in enumerate(zip(col_info, row_info, plot_length, alley)):
+            block_boundaries.append(block_origin_y)
             for row in range(rows):
                 for col in range(cols):
-                    for p in range(ppb):
+                    for p in range(ppc):
                         # Bottom left                                                       
-                        bl_x = block_origin_x     
-                        bl_x += col * ((ppb * two) + ((ppb-1) * four) + five)
-                        bl_x += p * (two + four)
+                        bl_x = block_origin_x + four
+                        bl_x += col * ((ppc * one) + ((ppc-1) * two) + three + four*2)
+                        bl_x += p * (one + two)
 
                         bl_y = block_origin_y
-                        bl_y += row * (one + three)    
+                        bl_y += row * (pl + a)    
 
                         # Bottom right                                                  
-                        br_x = bl_x + two
+                        br_x = bl_x + one
                         br_y = bl_y                                                                                             
 
                         # Top left
                         tl_x = bl_x
-                        tl_y = bl_y + one
+                        tl_y = bl_y + pl
 
                         # Top right
-                        tr_x = bl_x + two
-                        tr_y = bl_y + one
+                        tr_x = bl_x + one
+                        tr_y = bl_y + pl
 
                         # Must be in clockwise order
-                        bearing_radians = math.radians(bearing-180)
                         polygon = []
                         for x, y in [(bl_x, bl_y), (tl_x, tl_y), (tr_x, tr_y), (br_x, br_y)]:
                             x = x if left else -x
@@ -425,8 +494,43 @@ class CreateFieldPlan(QgsProcessingAlgorithm):
                         column_ids.append(int(col+1))
                         plot_ids.append(int(p+1))
                         block_ids.append(int(b+1))
+            
+            block_origin_y += ((rows * pl) + ((rows - 1) * a) + block_gap)
 
-            block_origin_y += ((cols * one) + ((cols - 1) * three) + block_gap)     
+        # calculate column IDs for each block
+        col_block_ids = [list(range(c)) for c in col_info]
+        feedback.pushInfo(f'{col_block_ids=}')
+
+        for col in range(max(col_info)):
+            # calculate x coord
+            boundary1 = margin_x + four + col * ((one * ppc) + (two * (ppc-1)) + three + (four*2))
+            boundary2 = boundary1 + (one * ppc) + (two * (ppc-1))
+            x = (boundary1 + boundary2) / 2
+
+            # find which block IDs has the current column
+            block_ids_col = [i for i, c in enumerate(col_block_ids) if col in c]
+            block1 = min(block_ids_col)
+            block2 = max(block_ids_col)
+
+            y1 = block_boundaries[block1] - 1
+            y2 = block_boundaries[block2] + (row_info[block2] * plot_length[block2]) + ((row_info[block2] - 1) * alley[block2]) + 1
+            gl = [[x, y1], [x, y2]]
+
+            # rotate
+            gl_rotated = []
+            for x, y in gl:
+                x = x if left else -x
+
+                rotated_x = x * math.cos(bearing_radians) - y * math.sin(bearing_radians)
+                rotated_y = x * math.sin(bearing_radians) + y * math.cos(bearing_radians)
+
+                x = origin_x + rotated_x
+                y = origin_y - rotated_y
+
+                gl_rotated.extend([x, y])
+
+            guidance_lines_coords.append(gl_rotated)
+            guidance_lines_col.append(col)
 
         for i, (polygon, block, row, column, plot) in enumerate(zip(polygons, block_ids, row_ids, column_ids, plot_ids)):
             polygon = [QgsPointXY(x,y) for x,y in polygon]
@@ -450,6 +554,36 @@ class CreateFieldPlan(QgsProcessingAlgorithm):
         )
 
         ret = {'FIELDPLAN':layer}
+
+        if return_guidance_lines:
+            crs = context.project().crs().authid()
+            guidance_layer = QgsVectorLayer(f"Linestring?crs={crs}", GUIDANCE_LINE_LAYER_NAME, "memory")
+            guidance_layer.startEditing()
+
+            guidenace_provider = guidance_layer.dataProvider()
+            guidance_fields = QgsFields()
+            guidance_fields.append(QgsField("col", QMetaType.Int))
+            guidenace_provider.addAttributes(guidance_fields)
+            guidance_layer.updateFields()
+
+            for (x1, y1, x2, y2), col in zip(guidance_lines_coords, guidance_lines_col):
+                feat = QgsFeature()
+                feat.setGeometry(QgsGeometry.fromPolylineXY([QgsPointXY(x1, y1), QgsPointXY(x2, y2)]))
+                feat.setAttributes([col])
+                guidenace_provider.addFeature(feat)
+            
+            guidance_layer.commitChanges()
+            guidance_layer.updateExtents()
+            context.temporaryLayerStore().addMapLayer(guidance_layer)
+            context.addLayerToLoadOnCompletion(
+                guidance_layer.id(),
+                QgsProcessingContext.LayerDetails(
+                    GUIDANCE_LINE_LAYER_NAME,
+                    context.project(),
+                    'FIELDPLANFIELDGUIDANCELINES'
+                )
+            )
+            ret['FIELDPLANGUIDANCELINES'] = guidance_layer
 
         if return_bearing:
             crs = context.project().crs().authid()
