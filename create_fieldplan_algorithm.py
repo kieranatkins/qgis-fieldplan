@@ -64,6 +64,8 @@ Dimension 4 - The column margin - An optional spacing parameter to allow for dea
 LAYER_NAME = "Field plan"
 BEARING_LAYER_NAME = "Field plan bearing"
 GUIDANCE_LINE_LAYER_NAME = "Guidance lines"
+ALLEY_LINE_LAYER_NAME = "Alley lines"
+BLOCK_BOUNDARY_LAYER_NAME = 'Block boundaries'
 BOUNDARY_LAYER_NAME = "Field plan block boundaries"
 VARIABLE_PARAMETERS = ['COLS', 'ROWS', 'PLOTLENGTH', 'ALLEY']
 FIELD_GUIDANCE_LINES_PARAMETERS = ['DIM1' ,'DIM2', 'DIM3', 'DIM4']
@@ -111,6 +113,158 @@ def _find_line_point_distance(line_x1, line_y1, line_x2, line_y2, point_x, point
     distance = math.sqrt((closest_x - point_x) ** 2 + (closest_y - point_y) ** 2)
     
     return distance, closest_x, closest_y
+
+def _create_field_plan(origin, margin, bearing, left, block_gap, block_rows, block_cols, block_plot_length, block_alley, ppc, one, two, three, four):
+    origin_x, origin_y = origin
+    block_origin_x, block_origin_y = margin
+
+    polygons = []
+    block_ids = []
+    column_ids = []
+    row_ids = []
+    plot_ids = []
+
+    guidance_lines_coords = []
+    guidance_lines_col = []
+
+    alley_lines_coords = []
+    alley_lines_block = []
+    alley_lines_row = []
+
+    boundary_lines_coords = []
+    boundary_lines_block = []
+
+    block_boundaries = []
+
+    # Iterate over each block
+    for b, (cols, rows, pl, a) in enumerate(zip(block_cols, block_rows, block_plot_length, block_alley)):
+        block_boundaries.append(block_origin_y)
+        for row in range(rows):
+            for col in range(cols):
+                for p in range(ppc):
+                    # Bottom left                                                       
+                    bl_x = block_origin_x + four
+                    bl_x += col * ((ppc * one) + ((ppc-1) * two) + three + four*2)
+                    bl_x += p * (one + two)
+
+                    bl_y = block_origin_y
+                    bl_y += row * (pl + a)    
+
+                    # Bottom right                                                  
+                    br_x = bl_x + one
+                    br_y = bl_y                                                                                             
+
+                    # Top left
+                    tl_x = bl_x
+                    tl_y = bl_y + pl
+
+                    # Top right
+                    tr_x = bl_x + one
+                    tr_y = bl_y + pl
+
+                    # Must be in clockwise order
+                    polygon = []
+                    for x, y in [(bl_x, bl_y), (tl_x, tl_y), (tr_x, tr_y), (br_x, br_y)]:
+                        x = x if left else -x
+                        rotated_x = x * math.cos(bearing) - y * math.sin(bearing)
+                        rotated_y = x * math.sin(bearing) + y * math.cos(bearing)
+
+                        x = origin_x + rotated_x
+                        y = origin_y - rotated_y
+
+                        polygon.append((x, y))
+                    
+                    polygons.append(polygon)
+                    row_ids.append(int(row+1))
+                    column_ids.append(int(col+1))
+                    plot_ids.append(int(p+1))
+                    block_ids.append(int(b+1))
+
+            # alley lines - don't do the last row
+            if row < rows-1:
+                x1 = block_origin_x + four
+                x2 = block_origin_x + four + cols * ((ppc * one) + ((ppc-1) * two)) + ((cols-1) * (three + (four*2)))
+                y = block_origin_y + (row * (pl + a)) + pl + a/2
+
+                # rotate
+                al = [[x1, y], [x2, y]]
+                al_rotated = []
+                for x, y in al:
+                    x = x if left else -x
+
+                    rotated_x = x * math.cos(bearing) - y * math.sin(bearing)
+                    rotated_y = x * math.sin(bearing) + y * math.cos(bearing)
+
+                    x = origin_x + rotated_x
+                    y = origin_y - rotated_y
+
+                    al_rotated.extend([x, y])
+
+                alley_lines_coords.append(al_rotated)
+                alley_lines_row.append(row)
+                alley_lines_block.append(b)
+        
+        low_x1 = block_origin_x + four
+        low_x2 = block_origin_x + four + cols * ((ppc * one) + ((ppc-1) * two)) + ((cols-1) * (three + (four*2)))
+        low_y = block_origin_y
+
+        hi_x1 = block_origin_x + four
+        hi_x2 = block_origin_x + four + cols * ((ppc * one) + ((ppc-1) * two)) + ((cols-1) * (three + (four*2)))
+        hi_y = block_origin_y + (rows * pl) + ((rows - 1) * a)
+
+        for x1, y1, x2, y2 in [[low_x1, low_y, low_x2, low_y], [hi_x1, hi_y, hi_x2, hi_y]]:
+            rotated = []
+            for x, y in [[x1, y1], [x2, y2]]:
+                x = x if left else -x
+
+                rotated_x = x * math.cos(bearing) - y * math.sin(bearing)
+                rotated_y = x * math.sin(bearing) + y * math.cos(bearing)
+
+                x = origin_x + rotated_x
+                y = origin_y - rotated_y
+
+                rotated.extend([x, y])
+
+                boundary_lines_coords.append(rotated)
+                boundary_lines_block.append(b)
+
+        block_origin_y += ((rows * pl) + ((rows - 1) * a) + block_gap)
+
+    # calculate column IDs for each block
+    col_block_ids = [list(range(c)) for c in block_cols]
+    for col in range(max(block_cols)):
+        # calculate x coord
+        boundary1 = margin[0] + four + col * ((one * ppc) + (two * (ppc-1)) + three + (four*2))
+        boundary2 = boundary1 + (one * ppc) + (two * (ppc-1))
+        x = (boundary1 + boundary2) / 2
+
+        # find which block IDs has the current column
+        block_ids_col = [i for i, c in enumerate(col_block_ids) if col in c]
+        block1 = min(block_ids_col)
+        block2 = max(block_ids_col)
+
+        y1 = block_boundaries[block1] - 1
+        y2 = block_boundaries[block2] + (block_rows[block2] * block_plot_length[block2]) + ((block_rows[block2] - 1) * block_alley[block2]) + 1
+        gl = [[x, y1], [x, y2]]
+
+        # rotate
+        gl_rotated = []
+        for x, y in gl:
+            x = x if left else -x
+
+            rotated_x = x * math.cos(bearing) - y * math.sin(bearing)
+            rotated_y = x * math.sin(bearing) + y * math.cos(bearing)
+
+            x = origin_x + rotated_x
+            y = origin_y - rotated_y
+
+            gl_rotated.extend([x, y])
+
+        guidance_lines_coords.append(gl_rotated)
+        guidance_lines_col.append(col)
+
+    return polygons, block_ids, column_ids, row_ids, plot_ids, guidance_lines_coords, guidance_lines_col, alley_lines_coords, alley_lines_row, alley_lines_block, boundary_lines_coords, boundary_lines_block
+
 
 class CreateFieldPlan(QgsProcessingAlgorithm):
     """
@@ -279,6 +433,38 @@ class CreateFieldPlan(QgsProcessingAlgorithm):
                 defaultValue=0
             )
         )
+        self.addParameter(
+            QgsProcessingParameterBoolean(
+                'RETURNBEARING',
+                self.tr('Return bearing'),
+                optional=False,
+                defaultValue=False
+            )
+        )
+        self.addParameter(
+            QgsProcessingParameterBoolean(
+                'RETURNGUIDANCELINES',
+                self.tr('Calculate guidance lines'),
+                optional=False,
+                defaultValue=False
+            )
+        )
+        self.addParameter(
+            QgsProcessingParameterBoolean(
+                'RETURNALLEYLINES',
+                self.tr('Calculate alley lines'),
+                optional=False,
+                defaultValue=False
+            )
+        )
+        self.addParameter(
+            QgsProcessingParameterBoolean(
+                'RETURNBLOCKBOUNDARIES',
+                self.tr('Calculate block boundaries'),
+                optional=False,
+                defaultValue=False
+            )
+        )
         self.addOutput(
             QgsProcessingOutputVectorLayer(
                 'FIELDPLAN',
@@ -293,30 +479,20 @@ class CreateFieldPlan(QgsProcessingAlgorithm):
         )
         self.addOutput(
             QgsProcessingOutputVectorLayer(
-                'FIELDPLAGUIDANCELINES',
+                'FIELDPLANGUIDANCELINES',
                 self.tr('Output block guidance lines')
             )
         )
         self.addOutput(
             QgsProcessingOutputVectorLayer(
-                'FIELDPLANBOUNDARY',
+                'FIELDPLANALLEYLINES',
+                self.tr('Output alley lines')
+            )
+        )
+        self.addOutput(
+            QgsProcessingOutputVectorLayer(
+                'FIELDPLANBLOCKBOUNDARIES',
                 self.tr('Output block edge boundary lines')
-            )
-        )
-        self.addParameter(
-            QgsProcessingParameterBoolean(
-                'RETURNBEARING',
-                self.tr('Return bearing?'),
-                optional=False,
-                defaultValue=False
-            )
-        )
-        self.addParameter(
-            QgsProcessingParameterBoolean(
-                'RETURNGUIDANCELINES',
-                self.tr('Calculate guidance lines?'),
-                optional=False,
-                defaultValue=False
             )
         )
 
@@ -338,7 +514,6 @@ class CreateFieldPlan(QgsProcessingAlgorithm):
         if len(margin) > 2:
             return False, "Margin parameter may contain either one value, to represent margin in both X and Y direction, or two comma-seperated values representing margin in X, Y directions"
         return True, ''
-
 
     def processAlgorithm(self, parameters, context, feedback):
         """
@@ -367,6 +542,8 @@ class CreateFieldPlan(QgsProcessingAlgorithm):
         snap_to_shape = self.parameterAsVectorLayer(parameters, 'SNAPTOSHAPE', context)
         return_bearing = self.parameterAsBoolean(parameters, 'RETURNBEARING', context)
         return_guidance_lines = self.parameterAsBoolean(parameters, 'RETURNGUIDANCELINES', context)
+        return_alley_lines = self.parameterAsBoolean(parameters, 'RETURNALLEYLINES', context)
+        return_block_boundaries = self.parameterAsBoolean(parameters, 'RETURNBLOCKBOUNDARIES', context)
         left = self.parameterAsInt(parameters, 'DIRECTION', context) == 0
         margin = [float(x) for x in self.parameterAsString(parameters, 'MARGIN', context).split(',')]
         block_gap = self.parameterAsDouble(parameters, 'BLOCKGAP', context)
@@ -422,12 +599,8 @@ class CreateFieldPlan(QgsProcessingAlgorithm):
             feedback.pushInfo(f'Updated origin from {origin.x():.2f}, {origin.y():.2f} to {origin_x:.2f}, {origin_y:.2f}')
             feedback.pushInfo(f'Updated dest from {dest.x():.2f}, {dest.y():.2f} to {dest_x:.2f}, {dest_y:.2f}')
 
-        if len(margin) == 2:
-            margin_x = margin[0]
-            margin_y = margin[1]
-        else:
-            margin_x = margin[0]
-            margin_y = margin[0]
+        if len(margin) == 1:
+            margin = (margin[0], margin[0])
 
         # calculate bearing
         dx = dest_x - origin_x
@@ -435,102 +608,11 @@ class CreateFieldPlan(QgsProcessingAlgorithm):
         bearing = math.degrees(math.atan2(dx, dy)) % 360
         bearing_radians = math.radians(bearing-180)
 
-        feedback.pushInfo(f'Calculated bearing to be: {bearing}')
+        feedback.pushInfo(f'Calculated bearing as: {bearing}')
 
-        block_origin_x = margin_x
-        block_origin_y = margin_y
-
-        polygons = []
-        block_ids = []
-        column_ids = []
-        row_ids = []
-        plot_ids = []
-
-        guidance_lines_coords = []
-        guidance_lines_col = []
-
-        block_boundaries = []
-
-        # Iterate over each block
-        for b, (cols, rows, pl, a) in enumerate(zip(col_info, row_info, plot_length, alley)):
-            block_boundaries.append(block_origin_y)
-            for row in range(rows):
-                for col in range(cols):
-                    for p in range(ppc):
-                        # Bottom left                                                       
-                        bl_x = block_origin_x + four
-                        bl_x += col * ((ppc * one) + ((ppc-1) * two) + three + four*2)
-                        bl_x += p * (one + two)
-
-                        bl_y = block_origin_y
-                        bl_y += row * (pl + a)    
-
-                        # Bottom right                                                  
-                        br_x = bl_x + one
-                        br_y = bl_y                                                                                             
-
-                        # Top left
-                        tl_x = bl_x
-                        tl_y = bl_y + pl
-
-                        # Top right
-                        tr_x = bl_x + one
-                        tr_y = bl_y + pl
-
-                        # Must be in clockwise order
-                        polygon = []
-                        for x, y in [(bl_x, bl_y), (tl_x, tl_y), (tr_x, tr_y), (br_x, br_y)]:
-                            x = x if left else -x
-                            rotated_x = x * math.cos(bearing_radians) - y * math.sin(bearing_radians)
-                            rotated_y = x * math.sin(bearing_radians) + y * math.cos(bearing_radians)
-
-                            x = origin_x + rotated_x
-                            y = origin_y - rotated_y
-
-                            polygon.append((x, y))
-                        
-                        polygons.append(polygon)
-                        row_ids.append(int(row+1))
-                        column_ids.append(int(col+1))
-                        plot_ids.append(int(p+1))
-                        block_ids.append(int(b+1))
-            
-            block_origin_y += ((rows * pl) + ((rows - 1) * a) + block_gap)
-
-        # calculate column IDs for each block
-        col_block_ids = [list(range(c)) for c in col_info]
-        feedback.pushInfo(f'{col_block_ids=}')
-
-        for col in range(max(col_info)):
-            # calculate x coord
-            boundary1 = margin_x + four + col * ((one * ppc) + (two * (ppc-1)) + three + (four*2))
-            boundary2 = boundary1 + (one * ppc) + (two * (ppc-1))
-            x = (boundary1 + boundary2) / 2
-
-            # find which block IDs has the current column
-            block_ids_col = [i for i, c in enumerate(col_block_ids) if col in c]
-            block1 = min(block_ids_col)
-            block2 = max(block_ids_col)
-
-            y1 = block_boundaries[block1] - 1
-            y2 = block_boundaries[block2] + (row_info[block2] * plot_length[block2]) + ((row_info[block2] - 1) * alley[block2]) + 1
-            gl = [[x, y1], [x, y2]]
-
-            # rotate
-            gl_rotated = []
-            for x, y in gl:
-                x = x if left else -x
-
-                rotated_x = x * math.cos(bearing_radians) - y * math.sin(bearing_radians)
-                rotated_y = x * math.sin(bearing_radians) + y * math.cos(bearing_radians)
-
-                x = origin_x + rotated_x
-                y = origin_y - rotated_y
-
-                gl_rotated.extend([x, y])
-
-            guidance_lines_coords.append(gl_rotated)
-            guidance_lines_col.append(col)
+        params = [(origin_x, origin_y), margin, bearing_radians, left, block_gap, row_info, col_info, plot_length, alley, ppc, one, two, three, four]
+        output = _create_field_plan(*params)
+        polygons, block_ids, row_ids, column_ids, plot_ids, guidance_lines_coords, guidance_lines_col, alley_lines_coords, alley_lines_row, alley_lines_block, boundary_lines_coords, boundary_lines_block = output
 
         for i, (polygon, block, row, column, plot) in enumerate(zip(polygons, block_ids, row_ids, column_ids, plot_ids)):
             polygon = [QgsPointXY(x,y) for x,y in polygon]
@@ -584,6 +666,67 @@ class CreateFieldPlan(QgsProcessingAlgorithm):
                 )
             )
             ret['FIELDPLANGUIDANCELINES'] = guidance_layer
+
+        if return_alley_lines:
+            crs = context.project().crs().authid()
+            alley_layer = QgsVectorLayer(f"Linestring?crs={crs}", ALLEY_LINE_LAYER_NAME, "memory")
+            alley_layer.startEditing()
+
+            alley_provider = alley_layer.dataProvider()
+            alley_fields = QgsFields()
+            alley_fields.append(QgsField("row", QMetaType.Int))
+            alley_fields.append(QgsField("block", QMetaType.Int))
+            alley_provider.addAttributes(alley_fields)
+            alley_layer.updateFields()
+
+            for (x1, y1, x2, y2), row, block in zip(alley_lines_coords, alley_lines_row, alley_lines_block):
+                feat = QgsFeature()
+                feat.setGeometry(QgsGeometry.fromPolylineXY([QgsPointXY(x1, y1), QgsPointXY(x2, y2)]))
+                feat.setAttributes([row, block])
+                alley_provider.addFeature(feat)
+            
+            alley_layer.commitChanges()
+            alley_layer.updateExtents()
+            context.temporaryLayerStore().addMapLayer(alley_layer)
+            context.addLayerToLoadOnCompletion(
+                alley_layer.id(),
+                QgsProcessingContext.LayerDetails(
+                    ALLEY_LINE_LAYER_NAME,
+                    context.project(),
+                    'FIELDPLANALLEYLINES'
+                )
+            )
+            ret['FIELDPLANALLEYLINES'] = alley_layer
+
+        if return_block_boundaries:
+            crs = context.project().crs().authid()
+            boundaries_layer = QgsVectorLayer(f"Linestring?crs={crs}", BOUNDARY_LAYER_NAME, "memory")
+            boundaries_layer.startEditing()
+
+            boundaries_provider = boundaries_layer.dataProvider()
+            boundaries_fields = QgsFields()
+            boundaries_fields.append(QgsField("block", QMetaType.Int))
+            boundaries_provider.addAttributes(boundaries_fields)
+            boundaries_layer.updateFields()
+
+            for (x1, y1, x2, y2), block in zip(boundary_lines_coords, boundary_lines_block):
+                feat = QgsFeature()
+                feat.setGeometry(QgsGeometry.fromPolylineXY([QgsPointXY(x1, y1), QgsPointXY(x2, y2)]))
+                feat.setAttributes([block])
+                boundaries_provider.addFeature(feat)
+            
+            boundaries_layer.commitChanges()
+            boundaries_layer.updateExtents()
+            context.temporaryLayerStore().addMapLayer(boundaries_layer)
+            context.addLayerToLoadOnCompletion(
+                boundaries_layer.id(),
+                QgsProcessingContext.LayerDetails(
+                    BOUNDARY_LAYER_NAME,
+                    context.project(),
+                    'FIELDPLANBLOCKBOUNDARIES'
+                )
+            )
+            ret['FIELDPLANBLOCKBOUNDARIES'] = boundaries_layer
 
         if return_bearing:
             crs = context.project().crs().authid()
