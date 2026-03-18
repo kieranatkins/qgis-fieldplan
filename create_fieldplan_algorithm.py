@@ -528,11 +528,11 @@ class CreateFieldPlan(QgsProcessingAlgorithm):
         # Setup fields
         provider = layer.dataProvider()
         fields = QgsFields()
-        fields.append(QgsField("id", QMetaType.Int))
-        fields.append(QgsField("block", QMetaType.Int))
-        fields.append(QgsField("row", QMetaType.Int))
-        fields.append(QgsField("col", QMetaType.Int))
-        fields.append(QgsField("plot", QMetaType.Int))
+        fields.append(QgsField("id", QMetaType.Type.Int))
+        fields.append(QgsField("block", QMetaType.Type.Int))
+        fields.append(QgsField("row", QMetaType.Type.Int))
+        fields.append(QgsField("col", QMetaType.Type.Int))
+        fields.append(QgsField("plot", QMetaType.Type.Int))
         provider.addAttributes(fields)
         layer.updateFields()
 
@@ -644,7 +644,7 @@ class CreateFieldPlan(QgsProcessingAlgorithm):
 
             guidenace_provider = guidance_layer.dataProvider()
             guidance_fields = QgsFields()
-            guidance_fields.append(QgsField("col", QMetaType.Int))
+            guidance_fields.append(QgsField("col", QMetaType.Type.Int))
             guidenace_provider.addAttributes(guidance_fields)
             guidance_layer.updateFields()
 
@@ -674,8 +674,8 @@ class CreateFieldPlan(QgsProcessingAlgorithm):
 
             alley_provider = alley_layer.dataProvider()
             alley_fields = QgsFields()
-            alley_fields.append(QgsField("row", QMetaType.Int))
-            alley_fields.append(QgsField("block", QMetaType.Int))
+            alley_fields.append(QgsField("row", QMetaType.Type.Int))
+            alley_fields.append(QgsField("block", QMetaType.Type.Int))
             alley_provider.addAttributes(alley_fields)
             alley_layer.updateFields()
 
@@ -705,7 +705,7 @@ class CreateFieldPlan(QgsProcessingAlgorithm):
 
             boundaries_provider = boundaries_layer.dataProvider()
             boundaries_fields = QgsFields()
-            boundaries_fields.append(QgsField("block", QMetaType.Int))
+            boundaries_fields.append(QgsField("block", QMetaType.Type.Int))
             boundaries_provider.addAttributes(boundaries_fields)
             boundaries_layer.updateFields()
 
@@ -735,7 +735,7 @@ class CreateFieldPlan(QgsProcessingAlgorithm):
 
             bearing_provider = bearing_layer.dataProvider()
             bearing_fields = QgsFields()
-            bearing_fields.append(QgsField("bearing", QMetaType.Double))
+            bearing_fields.append(QgsField("bearing", QMetaType.Type.Double))
             bearing_provider.addAttributes(bearing_fields)
             bearing_layer.updateFields()
             feat = QgsFeature()
