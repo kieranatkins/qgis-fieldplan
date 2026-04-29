@@ -28,7 +28,7 @@ Builds a field plan, based on given parameters, with functionality to have multi
 Field plan parameters are split into three sections - site parameters and block parameters.\n
 Note: Asterisks (*) denotes places where comma-separated values can be used.
 
-The algorithm denotes two dimensions: The X-axis, perpendicular the bearing line and the Y-axis, parallel to the bearing line
+The algorithm denotes two dimensions: The X-axis, perpendicular the bearing line and the Y-axis, parallel to the bearing line.
 
 NOTE: For a visualisation of these parameters, go to: <a href="https://github.com/kieranatkins/qgis-fieldplan/blob/main/site_info.png"> site parameters </a> and <a href="https://github.com/kieranatkins/qgis-fieldplan/blob/main/block_info.png"> block parameters </a>\n
 --------------------------\n
