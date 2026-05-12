@@ -45,7 +45,7 @@ Block gap - The spacing/gap from one block to a next.\n
 --------------------------\n
 Variable block parameters:\n
 --------------------------\n
-Note: Either a single value or multiple comma-seperated values can be placed in these input fields representing each block
+Note: Either a single value or multiple comma-separated values can be placed in these input fields representing each block
 Rows - The number of rows within the block (the number parallel to the bearing).\n
 Columns - The number of columns within the block (the number perpendicular to the bearing).\n
 Plot length - The length of a plot in the y dimension
