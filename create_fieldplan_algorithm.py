@@ -40,7 +40,6 @@ Snap to shape - An optional parameter that snaps the origin and bearing points t
 Direction - The direction along the bearing to build the field plan (left or right, from origin to destination).\n
 Margin - Empty space from the origin before building the field plan, this accepts either a single value for margin, or two comma-separated values for X&Y independently .\n
 Block number - Number of blocks
-Block gap - The spacing/gap from one block to a next.\n
 
 --------------------------\n
 Variable block parameters:\n
@@ -50,6 +49,7 @@ Rows - The number of rows within the block (the number parallel to the bearing).
 Columns - The number of columns within the block (the number perpendicular to the bearing).\n
 Plot length - The length of a plot in the y dimension
 Alley - The spacing/gap from one row to a next within a column.\n
+Block gap - The spacing/gap from one block to a next, for CSV must be block number-1 in length.\n
 
 --------------------------\n
 Fixed block parameters:\n
@@ -63,8 +63,8 @@ Dimension 4 - The column margin - An optional spacing parameter to allow for dea
 """
 LAYER_NAME = "Field plan"
 BEARING_LAYER_NAME = "Field plan bearing"
-GUIDANCE_LINE_LAYER_NAME = "Guidance lines"
-ALLEY_LINE_LAYER_NAME = "Alley lines"
+GUIDANCE_LINE_LAYER_NAME = "Field plan guidance lines"
+ALLEY_LINE_LAYER_NAME = "Field plan alley lines"
 BLOCK_BOUNDARY_LAYER_NAME = 'Block boundaries'
 BOUNDARY_LAYER_NAME = "Field plan block boundaries"
 VARIABLE_PARAMETERS = ['COLS', 'ROWS', 'PLOTLENGTH', 'ALLEY']
@@ -136,8 +136,10 @@ def _create_field_plan(origin, margin, bearing, left, block_gap, block_rows, blo
 
     block_boundaries = []
 
+    block_gap = block_gap + [0] # Add a zero so last iteration has final block gap value
+
     # Iterate over each block
-    for b, (cols, rows, pl, a) in enumerate(zip(block_cols, block_rows, block_plot_length, block_alley)):
+    for b, (cols, rows, pl, a, bg) in enumerate(zip(block_cols, block_rows, block_plot_length, block_alley, block_gap)):
         block_boundaries.append(block_origin_y)
         for row in range(rows):
             for col in range(cols):
@@ -228,7 +230,7 @@ def _create_field_plan(origin, margin, bearing, left, block_gap, block_rows, blo
                 boundary_lines_coords.append(rotated)
                 boundary_lines_block.append(b)
 
-        block_origin_y += ((rows * pl) + ((rows - 1) * a) + block_gap)
+        block_origin_y += ((rows * pl) + ((rows - 1) * a) + bg)
 
     # calculate column IDs for each block
     col_block_ids = [list(range(c)) for c in block_cols]
@@ -361,14 +363,6 @@ class CreateFieldPlan(QgsProcessingAlgorithm):
             )
         )
         self.addParameter(
-            QgsProcessingParameterNumber(
-                'BLOCKGAP',
-                self.tr('Block gap'),
-                type=qgis.core.Qgis.ProcessingNumberParameterType.Double,
-                defaultValue=0
-            )
-        )
-        self.addParameter(
             QgsProcessingParameterString(
                 'ROWS',
                 self.tr('Rows in a block*'),
@@ -390,6 +384,12 @@ class CreateFieldPlan(QgsProcessingAlgorithm):
             QgsProcessingParameterString(
                 'ALLEY',
                 self.tr('Alley*'),
+            )
+        )
+        self.addParameter(
+            QgsProcessingParameterString(
+                'BLOCKGAP',
+                self.tr('Block gap*'),
             )
         )
         self.addParameter(
@@ -510,6 +510,11 @@ class CreateFieldPlan(QgsProcessingAlgorithm):
             if not (len(block_params) == bn or len(block_params) == 1):
                 return False, f"The parameter {p} contains the wrong number of values for the number of blocks ({bn}). Values can be single, or comma-seperated for each block"            
 
+        block_gaps = self.parameterAsString(parameters, 'BLOCKGAP', context)
+        block_gaps = block_gaps.split(',')
+        if not (len(block_gaps) == (bn-1) or len(block_gaps) == 1):
+            return False, f"The parameter BLOCKGAP contains the wrong number of values for the number of spaces between blocks ({bn-1}). Values can be single, or comma-seperated for the space between each block"
+
         margin = self.parameterAsString(parameters, 'MARGIN', context).split(',')
         if len(margin) > 2:
             return False, "Margin parameter may contain either one value, to represent margin in both X and Y direction, or two comma-seperated values representing margin in X, Y directions"
@@ -523,7 +528,6 @@ class CreateFieldPlan(QgsProcessingAlgorithm):
         crs = context.project().crs().authid()
         layer = QgsVectorLayer(f"Polygon?crs={crs}", LAYER_NAME, "memory")
         layer.startEditing()
-
 
         # Setup fields
         provider = layer.dataProvider()
@@ -546,13 +550,13 @@ class CreateFieldPlan(QgsProcessingAlgorithm):
         return_block_boundaries = self.parameterAsBoolean(parameters, 'RETURNBLOCKBOUNDARIES', context)
         left = self.parameterAsInt(parameters, 'DIRECTION', context) == 0
         margin = [float(x) for x in self.parameterAsString(parameters, 'MARGIN', context).split(',')]
-        block_gap = self.parameterAsDouble(parameters, 'BLOCKGAP', context)
         block_number = self.parameterAsInt(parameters, 'BLOCKNUMBER', context)
 
         row_info = [int(x) for x in self.parameterAsString(parameters, 'ROWS', context).split(',')]
         col_info = [int(x) for x in self.parameterAsString(parameters, 'COLS', context).split(',')]
         plot_length = [float(x) for x in self.parameterAsString(parameters, 'PLOTLENGTH', context).split(',')]
         alley = [float(x) for x in self.parameterAsString(parameters, 'ALLEY', context).split(',')]
+        block_gap = [float(x) for x in self.parameterAsString(parameters, 'BLOCKGAP', context).split(',')]
 
         ppc = self.parameterAsInt(parameters, 'PPC', context)
         one = self.parameterAsDouble(parameters, 'DIM1', context)
@@ -565,8 +569,7 @@ class CreateFieldPlan(QgsProcessingAlgorithm):
         row_info = row_info if len(row_info) > 1 else row_info * block_number
         plot_length = plot_length if len(plot_length) > 1 else plot_length * block_number
         alley = alley if len(alley) > 1 else alley * block_number
-
-        feedback.pushInfo(f'{len(col_info)=}, {len(row_info)=}, {len(plot_length)=}, {len(alley)=}')
+        block_gap = block_gap if len(block_gap) > 1 else block_gap * block_number
 
         if snap_to_shape is None:
             origin_x = origin.x()
