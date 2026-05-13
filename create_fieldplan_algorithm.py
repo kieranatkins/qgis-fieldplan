@@ -227,8 +227,8 @@ def _create_field_plan(origin, margin, bearing, left, block_gap, block_rows, blo
 
                 rotated.extend([x, y])
 
-                boundary_lines_coords.append(rotated)
-                boundary_lines_block.append(b)
+            boundary_lines_coords.append(rotated)
+            boundary_lines_block.append(b)
 
         block_origin_y += ((rows * pl) + ((rows - 1) * a) + bg)
 
@@ -654,7 +654,7 @@ class CreateFieldPlan(QgsProcessingAlgorithm):
             for (x1, y1, x2, y2), col in zip(guidance_lines_coords, guidance_lines_col):
                 feat = QgsFeature()
                 feat.setGeometry(QgsGeometry.fromPolylineXY([QgsPointXY(x1, y1), QgsPointXY(x2, y2)]))
-                feat.setAttributes([col])
+                feat.setAttributes([col+1])
                 guidenace_provider.addFeature(feat)
             
             guidance_layer.commitChanges()
@@ -685,7 +685,7 @@ class CreateFieldPlan(QgsProcessingAlgorithm):
             for (x1, y1, x2, y2), row, block in zip(alley_lines_coords, alley_lines_row, alley_lines_block):
                 feat = QgsFeature()
                 feat.setGeometry(QgsGeometry.fromPolylineXY([QgsPointXY(x1, y1), QgsPointXY(x2, y2)]))
-                feat.setAttributes([row, block])
+                feat.setAttributes([row+1, block+1])
                 alley_provider.addFeature(feat)
             
             alley_layer.commitChanges()
