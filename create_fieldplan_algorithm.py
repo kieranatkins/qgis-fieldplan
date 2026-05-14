@@ -615,7 +615,7 @@ class CreateFieldPlan(QgsProcessingAlgorithm):
 
         params = [(origin_x, origin_y), margin, bearing_radians, left, block_gap, row_info, col_info, plot_length, alley, ppc, one, two, three, four]
         output = _create_field_plan(*params)
-        polygons, block_ids, row_ids, column_ids, plot_ids, guidance_lines_coords, guidance_lines_col, alley_lines_coords, alley_lines_row, alley_lines_block, boundary_lines_coords, boundary_lines_block = output
+        polygons, block_ids, column_ids, row_ids, plot_ids, guidance_lines_coords, guidance_lines_col, alley_lines_coords, alley_lines_row, alley_lines_block, boundary_lines_coords, boundary_lines_block = output
 
         for i, (polygon, block, row, column, plot) in enumerate(zip(polygons, block_ids, row_ids, column_ids, plot_ids)):
             polygon = [QgsPointXY(x,y) for x,y in polygon]

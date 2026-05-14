@@ -25,7 +25,7 @@ in the field. The function is robust to deletions, and has functionality for row
 Parameters:\n
 ----------\n
 Input field plan - Field plan created by the \"Create new field plan\" function, to have IDs renumbered.
-Row serpentine - Alternating direction of ordering from row to row. When selected, every row will switch the direction of ID ordering.
+Column serpentine - Alternating direction of ordering from column to column. When selected, every column will switch the direction of ID ordering.
 Board serpentine - Alternating direction of ordering from board to board. When selected, every board will have a switched direction of ID ordering.
 Reverse first board - Decides whether the first board should be flipped or not (i.e. whether the 0-id plot should be near or far from the site edge in the first board).
 ----------\n
@@ -95,8 +95,8 @@ class ResolveIDs(QgsProcessingAlgorithm):
         )
         self.addParameter(
             QgsProcessingParameterBoolean(
-                'ROWSERPENTINE',
-                self.tr('Row serpentine'),
+                'COLSERPENTINE',
+                self.tr('Column serpentine'),
             )
         )
         self.addParameter(
@@ -125,7 +125,7 @@ class ResolveIDs(QgsProcessingAlgorithm):
         
         return True, ''
 
-    def processAlgorithm(self, parameters, context, feedback):
+    def processAlgorithmOld(self, parameters, context, feedback):
         """
         Here is where the processing itself takes place.
         """
@@ -203,6 +203,96 @@ class ResolveIDs(QgsProcessingAlgorithm):
             attr = [f['id'], f['block'], f['row'], f['col'], f['plot'], id_map[f['id']], plot_map[f['id']]]
             f_new.setAttributes(attr)
             provider.addFeature(f_new)
+
+        feedback.pushInfo(f'Created {i+1} polygons.')
+
+        layer.commitChanges()
+        layer.updateExtents()
+        context.temporaryLayerStore().addMapLayer(layer)
+        context.addLayerToLoadOnCompletion(layer.id(), QgsProcessingContext.LayerDetails(LAYER_NAME, context.project(), 'FIELDPLAN'))
+
+        feedback.setProgress(100)
+        return {'FIELDPLAN':None}
+    
+    def processAlgorithm(self, parameters, context, feedback):
+        """
+        Here is where the processing itself takes place.
+        """
+        crs = context.project().crs().authid()
+        layer = QgsVectorLayer(f"Polygon?crs={crs}", LAYER_NAME, "memory")
+        layer.startEditing()
+    
+        # Setup fields
+        provider = layer.dataProvider()
+        fields = QgsFields()
+        fields.append(QgsField("id", QMetaType.Type.Int))
+        fields.append(QgsField("block", QMetaType.Type.Int))
+        fields.append(QgsField("row", QMetaType.Type.Int))
+        fields.append(QgsField("col", QMetaType.Type.Int))
+        fields.append(QgsField("plot", QMetaType.Type.Int))
+        fields.append(QgsField("original_id", QMetaType.Type.Int))
+        
+        provider.addAttributes(fields)
+        layer.updateFields()
+
+        input_layer = self.parameterAsVectorLayer(parameters, 'INPUT', context)
+        col_serpentine = self.parameterAsBool(parameters, 'COLSERPENTINE', context)
+        board_serpentine = self.parameterAsBool(parameters, 'BOARDSERPENTINE', context)
+        reverse_first_board = self.parameterAsBool(parameters, 'REVERSEFIRSTBOARD', context)
+
+        # Get features from input, check they're sorted
+        features = list(input_layer.getFeatures())
+        features = sorted(features, key=lambda f: f['id'])
+        feedback.pushInfo(f'{len(features)} shapes to resolve')
+        
+        new_features = []
+
+        resolved_id = 1
+        board_serpentine_switch = False if reverse_first_board else True
+        col_serpentine_switch = True 
+
+        # group records by col and iterate
+        cols = defaultdict(list)
+        for f in features:
+            cols[f['col']].append(f)
+
+        for col_id in cols.keys():
+            col = cols[col_id]
+            feedback.pushInfo(f'Col {col_id} length: {len(col)}')
+            col = col if col_serpentine_switch else reversed(col)
+
+            # group records by block and iterate
+            blocks = defaultdict(list)
+            for f in col:
+                blocks[f['block']].append(f)
+            
+            for block_id in blocks.keys():
+                block = blocks[block_id]
+                feedback.pushInfo(f'Block {block_id} length: {len(block)}')
+                rows = defaultdict(list)
+
+                # group records by row, then iterate over each plot
+                for f in block:
+                    rows[f['row']].append(f)
+                
+                for row_id in rows.keys():
+                    board = rows[row_id]
+                    feedback.pushInfo(f'Row {row_id} length: {len(board)}')
+                    board = board if board_serpentine_switch else reversed(board)
+
+                    for i, plot in enumerate(board):
+                        attributes = [int(resolved_id), int(block_id), int(row_id), int(col_id), int(i+1), int(plot['id'])]
+                        plot.setAttributes(attributes)
+                        new_features.append(plot)
+                        resolved_id += 1
+                    
+                    board_serpentine_switch = not board_serpentine_switch if board_serpentine else True
+
+            col_serpentine_switch = not col_serpentine_switch if col_serpentine else True
+
+
+        for i, f in enumerate(features):
+            provider.addFeature(f)
 
         feedback.pushInfo(f'Created {i+1} polygons.')
 
